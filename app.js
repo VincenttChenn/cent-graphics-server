@@ -17,25 +17,50 @@ app.use(express.json());
 //     res.send('Hello World!');
 // });
 
-app.use('/api/auth', authRoutes);
-app.use('/api/palettes', paletteRoutes);
+app.get('/', (req, res) => {
+    res.json({ status: 'ok', service: 'Cent Graphics API' });
+});
 
 const MONGO_URI = process.env.MONGO_URI;
 const PORT = process.env.PORT || 8000;
 
-
-const connectDB = async () => {
-    try {
-        await mongoose.connect(MONGO_URI);
-        console.log('Connected to MongoDB');
-        app.listen(PORT, () => {
-            console.log(`Server is running on port ${PORT}`);
+// Cache the connection so serverless invocations (Vercel) reuse it
+let connectionPromise = null;
+const connectDB = () => {
+    if (mongoose.connection.readyState === 1) return Promise.resolve();
+    if (!connectionPromise) {
+        connectionPromise = mongoose.connect(MONGO_URI).catch((error) => {
+            connectionPromise = null;
+            throw error;
         });
-    } catch (error) {
-        console.error('Error connecting to MongoDB:', error);
     }
+    return connectionPromise;
 };
 
-connectDB();
+// Ensure DB is connected before handling any /api request
+app.use('/api', async (req, res, next) => {
+    try {
+        await connectDB();
+        next();
+    } catch (error) {
+        console.error('Error connecting to MongoDB:', error);
+        res.status(500).json({ message: 'Database connection failed' });
+    }
+});
+
+app.use('/api/auth', authRoutes);
+app.use('/api/palettes', paletteRoutes);
+
+// Only start a listener when running locally (Vercel handles this itself)
+if (!process.env.VERCEL) {
+    connectDB()
+        .then(() => {
+            console.log('Connected to MongoDB');
+            app.listen(PORT, () => {
+                console.log(`Server is running on port ${PORT}`);
+            });
+        })
+        .catch((error) => console.error('Error connecting to MongoDB:', error));
+}
 
 export default app;
