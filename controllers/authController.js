@@ -7,7 +7,9 @@ const login = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    const oldUser = await User.findOne({ email });
+    const oldUser = await User.findOne({
+      $or: [{ email: email }, { username: email }]
+    });
 
     if (!oldUser) {
       return res.status(400).json({ msg: "User does not exist" });
